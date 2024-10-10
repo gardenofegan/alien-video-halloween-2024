@@ -1,154 +1,66 @@
 import cv2
-import mediapipe as mp
 import numpy as np
-from imread_from_url import imread_from_url
 
-class SkeletonPose():
-
-	def __init__(self, show_webcam = True, detection_confidence=0.3):
-
-		self.show_webcam = show_webcam
-
-		self.initialize_model(detection_confidence)
-
-		# Read skeleton images
+class SkeletonDrawer:
+	def __init__(self):
 		self.read_skeleton_images()
 
-	def __call__(self, image):
-
-		return self.detect_and_draw_skeleton(image)
-
-	def detect_and_draw_skeleton(self, image):
-
-		self.estimate_pose(image)
-
-		if not self.detected:
-			return False, None
-
-		return True, self.draw_skeleton(image)
-
-
-	def initialize_model(self, detection_confidence):
-
-		# Inialize face mesh detection (0: default model, 1: landmark image optimized)
-		self.pose_estimation = mp.solutions.pose.Pose(min_detection_confidence=detection_confidence,
-														min_tracking_confidence=0.5)
-
-	def estimate_pose(self, image):
-
-		self.img_height, self.img_width, _ = image.shape
-
-		# Extract background
-		input_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-		input_image.flags.writeable = False
-		pose_landmarks = self.pose_estimation.process(input_image).pose_landmarks
-
-		self.detected = pose_landmarks.landmark
-		if not self.detected:
-			return
-		self.skeleton_keypoints = np.array([[int(min([landmark.x*self.img_width,self.img_width-1])), int(min([landmark.y*self.img_height,self.img_height-1]))] 
-							for landmark in pose_landmarks.landmark], dtype=np.float32)
-		
-
-	def draw_skeleton(self, img):
-
-		if self.show_webcam:
-			output_img = img.copy()
-		else:
-			output_img = np.zeros((self.img_height,  self.img_width, 3), dtype=np.uint8)
-
-		# Draw all the skeleton parts
-		self.draw_skull(output_img, self.skeleton_keypoints[skull_indices,:])
-		self.draw_torso(output_img, self.skeleton_keypoints[torso_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[left_upper_arm_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[left_lower_arm_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[right_upper_arm_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[right_lower_arm_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[left_upper_leg_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[left_lower_leg_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[right_upper_leg_indices,:])
-		self.draw_bone(output_img, self.skeleton_keypoints[right_lower_leg_indices,:])
-
-		return output_img
-
-	
-	def draw_skull(self, image, img_skull_keypoints):
-
-		mouth = (img_skull_keypoints[2,:]+img_skull_keypoints[3,:])/2
-		img_skull_keypoints = np.vstack((img_skull_keypoints[:2,:],mouth))
-
-		M = cv2.getAffineTransform(skull_image_coordinates, img_skull_keypoints)
-		transformed_skull = cv2.warpAffine(self.skull_image, M, (self.img_width, self.img_height))
-		transformed_skull_mask = transformed_skull[:,:,2] != 0
-		image[transformed_skull_mask] = transformed_skull[transformed_skull_mask]
-
-	def draw_torso(self, image, img_torso_keypoints):
-
-		middle_hip = (img_torso_keypoints[2,:]+img_torso_keypoints[3,:])/2
-		img_torso_keypoints = np.vstack((img_torso_keypoints[:2,:],middle_hip))
-
-		original_torso_keypoints = np.array([[0,0],[self.torso_image.shape[1]-1,0],
-								[self.torso_image.shape[1]//2,self.torso_image.shape[0]-1]], dtype=np.float32)
-
-		M = cv2.getAffineTransform(original_torso_keypoints, img_torso_keypoints)
-		transformed_torso = cv2.warpAffine(self.torso_image, M, (self.img_width, self.img_height))
-		transformed_torso_mask = transformed_torso[:,:,2] != 0
-		image[transformed_torso_mask] = transformed_torso[transformed_torso_mask]
-
-	def draw_bone(self, image, bone_keypoints):
-
-		original_bone_keypoints = np.array([[self.bone_image.shape[1]//2,0],[self.bone_image.shape[1]//2,self.bone_image.shape[0]-1]], dtype=np.float32)
-		M, ret = cv2.estimateAffinePartial2D(original_bone_keypoints, bone_keypoints)
-
-		transformed_bone = cv2.warpAffine(self.bone_image, M, (self.img_width, self.img_height))
-		transformed_bone_mask = transformed_bone[:,:,2] != 0
-		image[transformed_bone_mask] = transformed_bone[transformed_bone_mask]
-
 	def read_skeleton_images(self):
+		# Load bone image from a local file
+		self.bone_image = cv2.imread("path/to/your/local/bone.png", cv2.IMREAD_UNCHANGED)
+		self.foot_image = cv2.imread("images/foot.png", cv2.IMREAD_UNCHANGED)
+		self.hand_image = cv2.imread("images/hand.png", cv2.IMREAD_UNCHANGED)
+		self.torso_image = cv2.imread("images/torso.png", cv2.IMREAD_UNCHANGED)
+		self.skull_image = cv2.imread("images/skull.png", cv2.IMREAD_UNCHANGED)
 
-		self.bone_image = cv2.imread("images/bone.png")
-		self.foot_image = cv2.imread("images/foot.png")
-		self.hand_image = cv2.imread("images/hand.png")
-		self.torso_image = cv2.imread("images/torso.png")
-		self.skull_image = cv2.imread("images/skull.png")
+	def draw_skeleton(self, image, keypoints):
+		for part in ['skull', 'torso', 'left_arm', 'right_arm', 'left_leg', 'right_leg']:
+			self.draw_body_part(image, keypoints, part)
+		return image
 
+	def draw_body_part(self, image, keypoints, part):
+		if part == 'skull':
+			self.draw_skull(image, keypoints[0:5])
+		elif part == 'torso':
+			self.draw_torso(image, keypoints[[5, 6, 11, 12]])
+		elif part == 'left_arm':
+			self.draw_bone(image, keypoints[[5, 7]])
+			self.draw_bone(image, keypoints[[7, 9]])
+		elif part == 'right_arm':
+			self.draw_bone(image, keypoints[[6, 8]])
+			self.draw_bone(image, keypoints[[8, 10]])
+		elif part == 'left_leg':
+			self.draw_bone(image, keypoints[[11, 13]])
+			self.draw_bone(image, keypoints[[13, 15]])
+		elif part == 'right_leg':
+			self.draw_bone(image, keypoints[[12, 14]])
+			self.draw_bone(image, keypoints[[14, 16]])
 
+	def draw_skull(self, image, keypoints):
+		src_pts = np.float32([[0, 0], [self.skull_image.shape[1], 0], [self.skull_image.shape[1]//2, self.skull_image.shape[0]]])
+		dst_pts = np.float32([keypoints[0], keypoints[1], (keypoints[3] + keypoints[4]) / 2])
+		M = cv2.getAffineTransform(src_pts, dst_pts)
+		rows, cols = image.shape[:2]
+		skull = cv2.warpAffine(self.skull_image, M, (cols, rows))
+		mask = skull[:,:,3] / 255.0
+		image[:] = (1.0 - mask[:,:,np.newaxis]) * image + mask[:,:,np.newaxis] * skull[:,:,:3]
 
+	def draw_torso(self, image, keypoints):
+		src_pts = np.float32([[0, 0], [self.torso_image.shape[1], 0], [self.torso_image.shape[1]//2, self.torso_image.shape[0]]])
+		dst_pts = np.float32([keypoints[0], keypoints[1], (keypoints[2] + keypoints[3]) / 2])
+		M = cv2.getAffineTransform(src_pts, dst_pts)
+		rows, cols = image.shape[:2]
+		torso = cv2.warpAffine(self.torso_image, M, (cols, rows))
+		mask = torso[:,:,3] / 255.0
+		image[:] = (1.0 - mask[:,:,np.newaxis]) * image + mask[:,:,np.newaxis] * torso[:,:,:3]
 
-skull_indices = [6, 3, 10, 9]
-torso_indices = [12, 11, 24, 23]
-left_upper_arm_indices = [12, 14]
-left_lower_arm_indices = [14, 16]
-left_hand_indices = [16, 18, 20]
-right_upper_arm_indices = [11, 13]
-right_lower_arm_indices = [13, 15]
-right_hand_indices = [15, 19, 17]
-left_upper_leg_indices = [24, 26]
-left_lower_leg_indices = [26, 28]
-left_foot_indices = [28, 32]
-right_upper_leg_indices = [23, 25]
-right_lower_leg_indices = [25, 27]
-right_foot_indices = [27, 31]
-
-skull_image_coordinates = np.array([[192,330],[446,349],[324,673]], dtype=np.float32)
-
-def draw_mouseclick_circle(event,x,y,flags,param):
-	if event == cv2.EVENT_LBUTTONDBLCLK:
-		cv2.circle(skull_image,(x,y),30,(0,0,255),-1)
-		print(f"[{x},{y}]")
-
-def select_skull_landmark_pixels():
-	# Order: Left eye, right eye, mouth
-	cv2.namedWindow("skeleton", cv2.WINDOW_NORMAL)
-	cv2.setMouseCallback("skeleton",draw_mouseclick_circle)
-	while(1):
-		cv2.imshow("skeleton",skull_image)
-
-		if cv2.waitKey(1) & 0xFF == ord('q'):
-			break
-
-if __name__ == '__main__':
-
-	# Read pumpkin image
-	skull_image = cv2.imread("images/skull.png")
-	select_skull_landmark_pixels()
+	def draw_bone(self, image, keypoints):
+		angle = np.arctan2(keypoints[1][1] - keypoints[0][1], keypoints[1][0] - keypoints[0][0])
+		length = np.linalg.norm(keypoints[1] - keypoints[0])
+		bone = cv2.resize(self.bone_image, (int(length), self.bone_image.shape[0]))
+		M = cv2.getRotationMatrix2D((0, bone.shape[0]//2), angle * 180 / np.pi, 1)
+		M[:, 2] += keypoints[0] - [0, bone.shape[0]//2]
+		rows, cols = image.shape[:2]
+		bone = cv2.warpAffine(bone, M, (cols, rows))
+		mask = bone[:,:,3] / 255.0
+		image[:] = (1.0 - mask[:,:,np.newaxis]) * image + mask[:,:,np.newaxis] * bone[:,:,:3]

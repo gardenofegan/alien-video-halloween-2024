@@ -3,7 +3,7 @@
 # - 
 
 import cv2
-from utils.skeleton_pose_utils import SkeletonPose
+from utils.skeleton_pose_utils_alt import SkeletonPose
 
 show_webcam = True
 
